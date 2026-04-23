@@ -1,0 +1,14 @@
+[project]
+name = "bilibili-livestream-reminder"
+version = "0.1.0"
+description = "A Bilibili livestream reminder bot using Telegram API"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp",
+    "brotli",
+    "pyyaml",
+    "requests",
+    "typer",
+    "yarl",
+]
