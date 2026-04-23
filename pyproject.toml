@@ -6,9 +6,18 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiohttp",
+    "blivedm",
     "brotli",
     "pyyaml",
     "requests",
     "typer",
     "yarl",
 ]
+
+[tool.uv.workspace]
+members = [
+    "blivedm",
+]
+
+[tool.uv.sources]
+blivedm = { workspace = true }
