@@ -8,7 +8,7 @@ import requests
 import typer
 import yaml
 
-import blivedm.blivedm as blivedm
+import blivedm
 
 logger: logging.Logger = logging.getLogger("BiliBili_Livestream_Reminder")
 logger.setLevel(logging.INFO)
