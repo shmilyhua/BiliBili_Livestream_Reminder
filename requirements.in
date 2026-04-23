@@ -1,5 +1,0 @@
--r blivedm/requirements.txt
-python-telegram-bot
-pyyaml
-requests
-typer
