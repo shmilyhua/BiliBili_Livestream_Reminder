@@ -20,12 +20,13 @@
 
 1. 克隆本仓库：
    ```shell
-   git clone [https://github.com/](https://github.com/)<YOUR_USERNAME>/BiliBili_Livestream_Reminder.git
+   git clone https://github.com/shmilyhua/BiliBili_Livestream_Reminder.git
    cd BiliBili_Livestream_Reminder
    ```
 
 2. 同步虚拟环境与依赖（依赖配置于 `pyproject.toml`）：
    ```shell
+   uv venv --python 3.13
    uv sync
    ```
 
