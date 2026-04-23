@@ -3,7 +3,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Set
 
 import aiohttp
 import typer
@@ -30,15 +30,15 @@ class BotConfig:
 async def get_live_room_info(session: aiohttp.ClientSession, room_id: int) -> Optional[Dict]:
     url = f"https://api.live.bilibili.com/room/v1/Room/get_info?room_id={room_id}"
     try:
-        async with session.get(url, headers=HEADERS, timeout=10) as response:
+        async with session.get(url) as response:
             if response.status != 200:
                 logger.error("获取直播间信息失败: HTTP 状态码 %s", response.status)
                 return None
             data = await response.json()
-            if data["code"] != 0:
-                logger.error("获取直播间信息失败: %s", data["message"])
+            if data.get("code") != 0:
+                logger.error("获取直播间信息失败: %s", data.get("message", "Unknown Error"))
                 return None
-            return data["data"]
+            return data.get("data")
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         logger.error("获取直播间网络异常: %s", e)
         return None
@@ -46,15 +46,15 @@ async def get_live_room_info(session: aiohttp.ClientSession, room_id: int) -> Op
 async def get_user_info(session: aiohttp.ClientSession, uid: int) -> Optional[Dict]:
     url = f"https://api.live.bilibili.com/live_user/v1/Master/info?uid={uid}"
     try:
-        async with session.get(url, headers=HEADERS, timeout=10) as response:
+        async with session.get(url) as response:
             if response.status != 200:
                 logger.error("获取用户信息失败: HTTP 状态码 %s", response.status)
                 return None
             data = await response.json()
-            if data["code"] != 0:
-                logger.error("获取用户信息失败: %s", data["message"])
+            if data.get("code") != 0:
+                logger.error("获取用户信息失败: %s", data.get("message", "Unknown Error"))
                 return None
-            return data["data"]
+            return data.get("data")
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         logger.error("获取用户信息网络异常: %s", e)
         return None
@@ -68,7 +68,7 @@ async def send_telegram_notification(session: aiohttp.ClientSession, config: Bot
             url = f"https://api.telegram.org/bot{config.bot_token}/sendMessage"
             payload = {"chat_id": config.chat_id, "text": text}
         
-        async with session.post(url, data=payload, timeout=10) as response:
+        async with session.post(url, data=payload) as response:
             response.raise_for_status()
             return True
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
@@ -97,15 +97,18 @@ class LiveRoom:
             self.is_live = False
             return
         
-        user_info = await get_user_info(self.session, live_room_info["uid"])
+        user_info = await get_user_info(self.session, live_room_info.get("uid", 0))
         if user_info is None:
             self.is_live = False
             return
             
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-        uname = user_info["info"]["uname"]
-        title = live_room_info["title"]
-        room_url = f"https://live.bilibili.com/{live_room_info['room_id']}"
+        
+        # Using .get for nested safety where appropriate
+        uname = user_info.get("info", {}).get("uname", "Unknown")
+        title = live_room_info.get("title", "No Title")
+        actual_room_id = live_room_info.get("room_id", self.room_id)
+        room_url = f"https://live.bilibili.com/{actual_room_id}"
         
         caption = (
             f"[LIVE - Bilibili] | Time: {current_time}\n"
@@ -125,6 +128,7 @@ class MyHandler(blivedm.BaseHandler):
         self.config = config
         self.session = session
         self.rooms: Dict[int, LiveRoom] = {}
+        self.background_tasks: Set[asyncio.Task] = set()
 
     def add_room(self, room_id: int):
         self.rooms[room_id] = LiveRoom(room_id, self.config, self.session)
@@ -133,13 +137,17 @@ class MyHandler(blivedm.BaseHandler):
         logger.info("[%d] PREPARING, command=%s", client.room_id, command)
         room = self.rooms.get(client.room_id)
         if room:
-            asyncio.create_task(room.on_preparing())
+            task = asyncio.create_task(room.on_preparing())
+            self.background_tasks.add(task)
+            task.add_done_callback(self.background_tasks.discard)
 
     def _on_live(self, client: blivedm.BLiveClient, command: Dict):
         logger.info("[%d] LIVE, command=%s", client.room_id, command)
         room = self.rooms.get(client.room_id)
         if room:
-            asyncio.create_task(room.on_live())
+            task = asyncio.create_task(room.on_live())
+            self.background_tasks.add(task)
+            task.add_done_callback(self.background_tasks.discard)
 
     # RISK DOCUMENTATION: Overriding protected attribute _CMD_CALLBACK_DICT.
     # If the blivedm library updates its command dispatch logic, this mechanism may fail.
@@ -149,15 +157,17 @@ class MyHandler(blivedm.BaseHandler):
     _CMD_CALLBACK_DICT["LIVE"] = _on_live
 
 async def reminder(config: BotConfig):
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(headers=HEADERS, timeout=timeout) as session:
         handler = MyHandler(config, session)
         for room_id in config.room_ids:
             live_room_info = await get_live_room_info(session, room_id)
             if live_room_info is None:
                 continue
             
-            actual_room_id = live_room_info["room_id"]
-            handler.add_room(actual_room_id)
+            actual_room_id = live_room_info.get("room_id")
+            if actual_room_id:
+                handler.add_room(actual_room_id)
 
         clients = [blivedm.BLiveClient(room_id) for room_id in handler.rooms.keys()]
         
@@ -179,9 +189,9 @@ def main(config: str = "config.yaml"):
         c = yaml.safe_load(file)
         
     bot_config = BotConfig(
-        bot_token=c["telegram-bot-token"],
-        chat_id=str(c["telegram-chat-id"]),
-        room_ids=c["room-ids"]
+        bot_token=c.get("telegram-bot-token", ""),
+        chat_id=str(c.get("telegram-chat-id", "")),
+        room_ids=c.get("room-ids", [])
     )
 
     asyncio.run(reminder(bot_config))
