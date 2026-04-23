@@ -1,7 +1,7 @@
 [![Fork](https://img.shields.io/badge/Forked_From-Original_Project-lightgrey.svg)](https://github.com/NahidaBuer/Telegram-Channel-to-QQ)
 [![Modified by AI](https://img.shields.io/badge/Modified_By-Gemini-blue.svg)](https://gemini.google.com)
 > **Note:** This repository is a modified fork of [BiliBili_Livestream_Reminder](https://github.com/hydrotho/BiliBili_Livestream_Reminder). The modifications, refactoring, and new features introduced in this fork were primarily implemented using Gemini.
-> # BiliBili_Livestream_Reminder
+# BiliBili_Livestream_Reminder
 
 一款监控哔哩哔哩直播间并通过 Telegram 机器人发送通知的工具。
 
